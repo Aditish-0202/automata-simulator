@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DFA Minimization Simulator</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f5ef;color:#182b25;font:16px system-ui,sans-serif}header{background:#142f28;color:white;padding:48px max(5%,calc((100% - 1120px)/2)) 42px}header small{color:#c9ef91;letter-spacing:.12em;font-weight:700}h1{font-size:clamp(2.2rem,6vw,4rem);letter-spacing:-.06em;margin:10px 0}header p{margin:0;color:#d5e4db}main{max-width:1180px;margin:auto;padding:28px 24px 60px}.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:20px;align-items:start}section{background:white;border:1px solid #dbe3d9;border-radius:18px;padding:22px}h2{margin:0 0 16px;font-size:1.4rem}h3{margin:20px 0 8px}label{display:block;font-size:.88rem;font-weight:700;margin:12px 0 5px}input,select,button{font:inherit;border-radius:8px;border:1px solid #a4b9aa;padding:8px 10px;background:white;color:inherit}input,select{max-width:100%;width:100%}input[type=checkbox]{width:auto;accent-color:#245b45}button{cursor:pointer;font-weight:650}button:hover{background:#e8f2de}button:disabled{opacity:.45;cursor:default}.primary{background:#c9ef91;border-color:#8ba95d}.row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.row>*{flex:1}.actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;font-size:.92rem}th,td{text-align:left;padding:8px;border-bottom:1px solid #e0e8df}th{background:#edf4ea}td select{min-width:75px}.muted,small{color:#52685b}.error{color:#a32130}.pill{display:inline-block;border-radius:999px;padding:6px 12px;margin:3px;background:#e8f3dd;font:600 .9rem ui-monospace,monospace}.summary{background:#142f28;color:#e1ffb8;padding:15px;border-radius:10px;font-size:1.2rem;font-weight:750}.panels{display:grid;gap:20px}.trace{overflow-wrap:anywhere}.split{margin:.35em 0}footer{padding-top:24px;color:#52685b;font-size:.9rem}@media(max-width:850px){.layout{grid-template-columns:1fr}}:focus-visible{outline:3px solid #4e8065;outline-offset:2px}
+body{background:#f3f4fa;color:#1c203b}header{background:#202044;border-bottom:5px solid #aa9af8}header small{color:#cec1ff}header p{color:#e3def8}section{border-color:#dfdfed;box-shadow:0 5px 18px #29265508}.language{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:28px;margin-bottom:20px}.language aside{background:#f3efff;border-radius:12px;padding:16px}.language input{font:600 1.15rem ui-monospace,monospace}.primary{background:#d3c8ff;border-color:#9382d3}button:hover{background:#ece6ff}.summary{background:#252149;color:#e8ddff}.pill{background:#eee8ff}th{background:#f3f0fb}input,select,button{border-color:#b7b4ce}.muted,small{color:#535473}@media(max-width:760px){.language{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><small>CSET302 / AUTOMATA LAB</small><h1>DFA Studio</h1><p>Turn a regular language into its smallest DFA.</p></header>
+<main>
+<section class="language">
+<div><h2>Describe the language</h2>
+<label for="expression">Regular expression</label>
+<input id="expression" value="(0|1)*1" spellcheck="false">
+<label for="alphabet">Alphabet shared by both editors</label><input id="alphabet" value="0, 1">
+<p class="muted"><small>Use <code>|</code> for union, <code>*</code> for repetition, parentheses for grouping, <code>ε</code> for the empty string, and <code>∅</code> for the empty language.</small></p>
+<button class="primary" id="compile">Build and minimize</button>
+<p id="language-status" role="status"></p></div>
+<aside><strong>Try a language</strong><div id="examples" class="actions"></div><small>The alphabet can include extra symbols. The generated DFA sends unmatched input to a dead state when needed.</small></aside>
+</section>
+<div class="layout">
+<section>
+<h2>Build your DFA</h2>
+<label for="preset">Demo cases</label>
+<select id="preset"></select>
+<label for="states">States</label><input id="states" value="A, B" aria-describedby="input-help">
+<p id="input-help" class="muted"><small>Use commas between names or symbols. Select a destination in every transition cell.</small></p>
+<div class="actions"><button id="build">Build transition table</button><button class="primary" id="minimize">Minimize DFA</button></div>
+<p class="error" id="error" role="alert" hidden></p>
+<label for="start">Start state</label><select id="start"></select>
+<h3>Transitions</h3><div class="scroll" id="editor"></div>
+</section>
+<div class="panels">
+<section aria-labelledby="steps-title">
+<h2 id="steps-title">Minimization steps</h2>
+<div class="summary" id="summary" role="status"></div>
+<div class="actions"><button id="previous">← Previous</button><button id="next">Next →</button></div>
+<div id="step" aria-live="polite"></div>
+</section>
+<section>
+<h2>Minimized DFA</h2>
+<div id="result" class="scroll"></div>
+<p id="equivalence" role="status"></p>
+</section>
+<section>
+<h2>Test an input string</h2>
+<label for="word">Input</label><input id="word" placeholder="Leave blank for ε">
+<p><small>Type a string for single-character symbols. Separate multi-character symbols with spaces or commas.</small></p>
+<div class="actions"><button id="test" class="primary">Compare runs</button></div>
+<div id="trace" class="trace" aria-live="polite"></div>
+</section>
+</div>
+</div>
+<footer>Aditi Sharma · CSET302 Milestone II</footer>
+</main>
+<script>
+"use strict";
+
+// Each machine uses numeric state IDs. Columns follow the alphabet order.
+const cases = [
+  {name:"Merge states + remove unreachable", states:["A","B","C","D","X"], alphabet:["0","1"], start:0, finals:[2,3], rows:[[0,2],[1,3],[1,2],[0,3],[4,4]], expected:2},
+  {name:"Already minimal · ends in 01", states:["A","B","C"], alphabet:["0","1"], start:0, finals:[2], rows:[[1,0],[1,2],[1,0]], expected:3},
+  {name:"All states accepting", states:["A","B"], alphabet:["a"], start:0, finals:[0,1], rows:[[1],[0]], expected:1},
+  {name:"No accepting states", states:["A","B"], alphabet:["a"], start:0, finals:[], rows:[[1],[1]], expected:1},
+  {name:"One state · accepts ε", states:["A"], alphabet:["a"], start:0, finals:[0], rows:[[0]], expected:1},
+  {name:"Incomplete transition · validation", states:["A"], alphabet:["a"], start:0, finals:[], rows:[[-1]]}
+];
+
+const el = id => document.getElementById(id);
+function item(tag, value, parent) {
+  const node = document.createElement(tag);
+  node.textContent = value;
+  parent.append(node);
+  return node;
+}
+function option(select, text, value) {
+  item("option", text, select).value = value;
+}
+function table(parent, headings) {
+  const element = item("table", "", parent);
+  const header = item("tr", "", item("thead", "", element));
+  for (const label of headings) item("th", label, header).scope = "col";
+  return item("tbody", "", element);
+}
+const splitList = value => value.split(",").map(part => part.trim());
+function readDefinition() {
+  const states = splitList(el("states").value);
+  const alphabet = splitList(el("alphabet").value);
+  for (const [names, label, limit] of [[states,"states",30],[alphabet,"symbols",12]]) {
+    if (names.some(name => !name || /\s/.test(name)) || new Set(names).size !== names.length || names.length > limit) {
+      throw new Error("Enter 1–" + limit + " unique " + label + " without spaces inside names.");
+    }
+  }
+  return {states, alphabet};
+}
+
+let definition, original, output, stepIndex;
+let calculation = 0;
+
+async function request(path, payload) {
+  const response = await fetch(path, {
+    method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error);
+  return data;
+}
+let transitions = [], checks = [];
+function renderEditor(machine) {
+  definition = {states:machine.states, alphabet:machine.alphabet};
+  el("start").replaceChildren();
+  el("editor").replaceChildren();
+  const body = table(el("editor"), ["State", "Accepting", ...machine.alphabet]);
+  checks = [];
+  transitions = machine.states.map((state, i) => {
+    option(el("start"), state, i);
+    const row = item("tr", "", body);
+    item("th", state, row).scope = "row";
+    const check = item("input", "", item("td", "", row));
+    check.type = "checkbox";
+    check.setAttribute("aria-label", state + " is accepting");
+    check.checked = machine.finals.includes(i);
+    checks.push(check);
+    return machine.alphabet.map((symbol, k) => {
+      const select = item("select", "", item("td", "", row));
+      select.setAttribute("aria-label", "Transition from " + state + " on " + symbol);
+      option(select, "Choose", -1);
+      machine.states.forEach((name, j) => option(select, name, j));
+      select.value = machine.rows[i][k];
+      return select;
+    });
+  });
+  el("start").value = machine.start;
+}
+
+function clearResult() {
+  calculation++;
+  output = null;
+  el("summary").textContent = "Ready to minimize";
+  for (const id of ["step","result","equivalence","trace"]) el(id).replaceChildren();
+  for (const id of ["previous","next","test"]) el(id).disabled = true;
+}
+function showError(message = "") {
+  el("error").hidden = !message;
+  el("error").textContent = message;
+}
+function renderStep() {
+  const {steps} = output;
+  const step = steps[stepIndex];
+  const panel = el("step");
+  panel.replaceChildren();
+  item("small", "Step " + (stepIndex + 1) + " of " + steps.length, panel);
+  item("h3", step.title, panel);
+  const groupText = group => "{" + group.map(id => original.states[id]).join(", ") + "}";
+  step.groups.forEach(group => item("span", groupText(group), panel).className = "pill");
+  if (step.removed) item("p", "Unreachable states: " + (step.removed.map(id => original.states[id]).join(", ") || "none"), panel);
+  for (const {group,buckets} of step.splits || []) {
+    const detail = [...buckets].map(([signature, members]) => groupText(members) + " → (" + signature.split(",").map(i => Number(i) + 1).join(", ") + ")");
+    item("p", groupText(group) + " splits into " + detail.join(" and ") + ".", panel).className = "split";
+  }
+  if (step.splits) item("small", "Each tuple lists target block numbers from the previous step, in alphabet order: " + original.alphabet.join(", ") + ".", panel);
+  if (stepIndex === steps.length - 1) item("p", "Each block becomes one state in the minimized DFA.", panel);
+  el("previous").disabled = stepIndex === 0;
+  el("next").disabled = stepIndex === steps.length - 1;
+}
+async function calculate() {
+  clearResult();
+  const revision = calculation;
+  showError();
+  try {
+    const current = readDefinition();
+    if (JSON.stringify(current) !== JSON.stringify(definition)) throw new Error("Build the transition table for the new states and alphabet first.");
+    const rows = transitions.map((row, i) => row.map((select, k) => {
+      const target = Number(select.value);
+      if (target < 0) throw new Error("Choose a destination from " + current.states[i] + " on " + current.alphabet[k] + ".");
+      return target;
+    }));
+    original = {...current, rows, start:Number(el("start").value), finals:checks.flatMap((check, i) => check.checked ? [i] : [])};
+    const result = await request("/api/minimize", original);
+    if (revision !== calculation) return;
+    output = result;
+  } catch (error) {
+    if (revision === calculation) showError(error.message);
+    return;
+  }
+  const {reduced, groups} = output;
+  el("summary").textContent = original.states.length + " → " + reduced.states.length + " states";
+  stepIndex = 0;
+  renderStep();
+  const body = table(el("result"), ["State", "Original states", ...reduced.alphabet]);
+  reduced.states.forEach((state, i) => {
+    const row = item("tr", "", body);
+    item("th", (i === reduced.start ? "→ " : "") + state + (reduced.finals.includes(i) ? " *" : ""), row).scope = "row";
+    item("td", groups[i].map(id => original.states[id]).join(", "), row);
+    reduced.rows[i].forEach(id => item("td", reduced.states[id], row));
+  });
+  item("p", "→ Start state · * Accepting state", el("result")).className = "muted";
+  el("equivalence").textContent = output.equivalent ? "Equivalent for all strings · reachable state pairs checked" : "Equivalence check failed";
+  el("test").disabled = false;
+}
+function loadPreset() {
+  if (!el("preset").value) return;
+  const machine = cases[Number(el("preset").value)];
+  el("states").value = machine.states.join(", ");
+  el("alphabet").value = machine.alphabet.join(", ");
+  el("word").value = "";
+  renderEditor(machine);
+  calculate();
+}
+option(el("preset"), "Choose a manual DFA example", "");
+cases.forEach((machine, i) => option(el("preset"), machine.name, i));
+el("preset").addEventListener("change", loadPreset);
+el("build").addEventListener("click", () => {
+  showError();
+  try {
+    const next = readDefinition();
+    if (JSON.stringify(next) !== JSON.stringify(definition)) {
+      renderEditor({...next, start:0, finals:[], rows:next.states.map(() => next.alphabet.map(() => -1))});
+    }
+    clearResult();
+  } catch (error) {
+    showError(error.message);
+  }
+});
+for (const id of ["states","alphabet","start","editor"]) el(id).addEventListener("input", () => {
+  showError();
+  clearResult();
+});
+el("minimize").addEventListener("click", calculate);
+el("previous").addEventListener("click", () => { stepIndex--; renderStep(); });
+el("next").addEventListener("click", () => { stepIndex++; renderStep(); });
+el("test").addEventListener("click", async () => {
+  const revision = calculation;
+  const panel = el("trace");
+  panel.replaceChildren();
+  const input = el("word").value.trim();
+  const symbols = !input ? [] : /[\s,]/.test(input) ? input.split(/[\s,]+/) :
+    original.alphabet.every(symbol => [...symbol].length === 1) ? [...input] : [input];
+  const invalid = symbols.find(symbol => !original.alphabet.includes(symbol));
+  if (invalid) {
+    item("p", "Unknown symbol: " + invalid, panel).className = "error";
+    return;
+  }
+  try {
+    const {runs} = await request("/api/compare", {original, reduced:output.reduced, symbols});
+    if (revision !== calculation || input !== el("word").value.trim()) return;
+    panel.replaceChildren();
+    runs.forEach(({path,accepted}, i) => {
+      item("p", ["Original","Minimized"][i] + " · " + (accepted ? "Accepted" : "Rejected") + " · " + path, panel);
+    });
+  } catch (error) {
+    if (revision === calculation) item("p", error.message, panel).className = "error";
+  }
+});
+el("word").addEventListener("input", () => el("trace").replaceChildren());
+el("word").addEventListener("keydown", event => { if (event.key === "Enter" && output) el("test").click(); });
+async function compile() {
+  const button = el("compile");
+  button.disabled = true;
+  clearResult();
+  const revision = calculation;
+  const status = el("language-status");
+  status.textContent = "Building DFA…";
+  try {
+    const {machine} = await request("/api/compile", {
+      expression:el("expression").value, alphabet:readDefinitionAlphabet()
+    });
+    if (revision !== calculation) {
+      status.textContent = "Input changed. Build again to apply the expression.";
+      return;
+    }
+    el("states").value = machine.states.join(", ");
+    el("alphabet").value = machine.alphabet.join(", ");
+    el("preset").value = "";
+    renderEditor(machine);
+    status.textContent = "Built " + machine.states.length + " DFA states from the expression.";
+    await calculate();
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function readDefinitionAlphabet() {
+  return splitList(el("alphabet").value);
+}
+
+for (const [label, expression] of [["Ends in 1","(0|1)*1"],["Contains 01","(0|1)*01(0|1)*"],["Even number of 1s","0*(10*10*)*"],["Only ε","ε"]]) {
+  const button = item("button", label, el("examples"));
+  button.addEventListener("click", () => {
+    if (el("compile").disabled) return;
+    el("alphabet").value = "0, 1";
+    el("expression").value = expression;
+    compile();
+  });
+}
+el("compile").addEventListener("click", compile);
+el("expression").addEventListener("input", () => {
+  clearResult();
+  el("language-status").textContent = "";
+});
+el("expression").addEventListener("keydown", event => {
+  if (event.key === "Enter" && !el("compile").disabled) compile();
+});
+renderEditor(cases[0]);
+compile();
+</script>
+</body>
+</html>
