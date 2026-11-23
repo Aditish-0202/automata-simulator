@@ -31,7 +31,7 @@ function minimize(machine) {
       break;
     }
     groups = next;
-    steps.push({title:"Refine by transition targets", groups, splits:splits.filter(({buckets}) => buckets.size > 1)});
+    steps.push({title:"Refine by transition targets", groups, splits:splits.filter(({buckets}) => buckets.size > 1).map(({group, buckets}) => ({group, buckets:[...buckets]}))});
   }
   const index = groupIndex(groups);
   const reduced = {
